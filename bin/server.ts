@@ -72,12 +72,11 @@ async function handleInit(req: Request, ip: string): Promise<Response> {
 
   if (size > HARD_MAX) return json({ error: `exceeds max file size ${HARD_MAX}` }, 413);
 
-  const storage = pickStorage(size);
+  let storage = pickStorage(size);
   if (!storage) return json({ error: 'invalid size' }, 400);
 
-  if (storage === 'supabase' && !supabaseAvailable()) {
-    return json({ error: 'supabase not configured; cannot accept small uploads right now' }, 503);
-  }
+  // Fall back to local if Supabase isn't configured
+  if (storage === 'supabase' && !supabaseAvailable()) storage = 'local';
 
   if (storage === 'local') {
     const total = q.totalLocalReady.get()?.total ?? 0;
