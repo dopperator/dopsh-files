@@ -22,10 +22,26 @@ import { renderLanding } from '../src/landing.ts';
 
 const PORT = Number(process.env.PORT ?? 4100);
 const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL ?? 'https://dop.sh').replace(/\/$/, '');
-const SLUG_RE = /^[A-Za-z0-9_-]{8}$/;
+const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 
-function newSlug(): string {
-  return randomBytes(6).toString('base64url');
+function slugifyStem(filename: string): string {
+  const stem = filename.replace(/\.[A-Za-z0-9]+$/, '');
+  const s = stem
+    .toLowerCase()
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return s || 'file';
+}
+
+function uniqueSlug(base: string): string {
+  if (!q.getBySlug.get(base)) return base;
+  for (let i = 2; i <= 9; i++) {
+    const s = `${base}-${i}`;
+    if (!q.getBySlug.get(s)) return s;
+  }
+  return `${base}-${randomBytes(3).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 }
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -84,10 +100,7 @@ async function handleInit(req: Request, ip: string): Promise<Response> {
     try { await assertDiskAvailable(size); } catch (e) { return json({ error: String((e as Error).message) }, 507); }
   }
 
-  // slug collision-retry (extremely unlikely with 48 random bits)
-  let slug = newSlug();
-  for (let i = 0; i < 5 && q.getBySlug.get(slug); i++) slug = newSlug();
-  if (q.getBySlug.get(slug)) return json({ error: 'slug collision, retry' }, 500);
+  const slug = uniqueSlug(slugifyStem(filename));
 
   const uploadToken = storage === 'local' ? randomBytes(24).toString('base64url') : null;
   const now = Math.floor(Date.now() / 1000);
