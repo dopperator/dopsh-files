@@ -1,0 +1,16 @@
+{
+  "name": "dopsh-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run bin/server.ts",
+    "sweep": "bun run bin/sweep.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "~5.6.0"
+  }
+}
