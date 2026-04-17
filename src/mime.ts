@@ -49,3 +49,7 @@ export function extFromFilename(filename: string): string | null {
 export function lookupMime(ext: string): MimeEntry | null {
   return MIME_MAP[ext.toLowerCase()] ?? null;
 }
+
+export function resolveMime(ext: string): MimeEntry {
+  return MIME_MAP[ext.toLowerCase()] ?? { mime: 'application/octet-stream', mode: 'other' };
+}

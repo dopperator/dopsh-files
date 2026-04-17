@@ -2,7 +2,12 @@ import { readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { q } from '../src/db.ts';
 import { FILES_DIR, localPath, partPath, removeLocal } from '../src/storage.ts';
-import { deleteObject, listObjects, supabaseAvailable } from '../src/supabase.ts';
+import { deleteObject, listObjects, supabaseAvailable, bucketFor, SUPABASE_BUCKET_MEDIA, SUPABASE_BUCKET_FILES } from '../src/supabase.ts';
+import { resolveMime } from '../src/mime.ts';
+
+function bucketForExt(ext: string): string {
+  return bucketFor(resolveMime(ext).mode);
+}
 
 const AGE_CUTOFF_SEC = 24 * 3600;
 
@@ -14,7 +19,7 @@ async function main() {
   const stale = q.oldPending.all(cutoff);
   for (const row of stale) {
     if (row.storage === 'supabase') {
-      try { await deleteObject(`${row.slug}.${row.ext}`); } catch (e) { console.warn('supabase del fail', row.slug, e); }
+      try { await deleteObject(bucketForExt(row.ext), `${row.slug}.${row.ext}`); } catch (e) { console.warn('supabase del fail', row.slug, e); }
     } else {
       removeLocal(row.slug, row.ext);
     }
@@ -35,17 +40,20 @@ async function main() {
     console.warn('cannot read FILES_DIR', e);
   }
 
-  // 3) Supabase objects not referenced by ready rows
+  // 3) Supabase objects (both buckets) not referenced by ready rows
   if (supabaseAvailable()) {
-    try {
-      const ref = new Set(q.allSupabaseReadyPaths.all().map(r => `${r.slug}.${r.ext}`));
-      for (const name of await listObjects()) {
-        if (!ref.has(name)) {
-          try { await deleteObject(name); console.log('removed orphan supabase', name); } catch (e) { console.warn(e); }
+    const ref = new Set(q.allSupabaseReadyPaths.all().map(r => `${r.slug}.${r.ext}`));
+    const buckets = Array.from(new Set([SUPABASE_BUCKET_MEDIA, SUPABASE_BUCKET_FILES]));
+    for (const bucket of buckets) {
+      try {
+        for (const name of await listObjects(bucket)) {
+          if (!ref.has(name)) {
+            try { await deleteObject(bucket, name); console.log(`removed orphan supabase ${bucket}/${name}`); } catch (e) { console.warn(e); }
+          }
         }
+      } catch (e) {
+        console.warn(`supabase list/delete err (${bucket})`, e);
       }
-    } catch (e) {
-      console.warn('supabase list/delete err', e);
     }
   }
 

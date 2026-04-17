@@ -1,13 +1,24 @@
 # dop.sh file service
 
-Small Bun HTTP server powering `https://dop.sh/u/...` and `/api/upload/*`.
+Small Bun HTTP server powering `https://dop.sh/u/...`, `https://dop.sh/f/...`, and `/api/upload/*`.
+
+## Public URL schema
+
+| Path | Behavior |
+|---|---|
+| `GET /u/<slug>.<ext>` | Media (image/video/audio): inline embed. Non-media: 302 → `/f/<slug>.<ext>`. |
+| `GET /f/<slug>.<ext>` | Force download — `Content-Disposition: attachment` with the original filename. Works for any extension, including unknown ones (served as `application/octet-stream`). |
+
+The init endpoint returns the canonical `viewUrl` for a given file based on its mime mode (media → `/u/`, other → `/f/`).
 
 ## Tiers
 
 | Size | Storage |
 |---|---|
-| ≤ 50 MB | Supabase Storage (Free plan) |
+| ≤ 50 MB | Supabase Storage (Free plan, split into `media` and `files` buckets) |
 | > 50 MB and ≤ `HARD_MAX` (default 2 GB) | Local disk at `data/files/` |
+
+Supabase bucket routing: media-mode uploads go to `SUPABASE_BUCKET_MEDIA` (default `media`), non-media to `SUPABASE_BUCKET_FILES` (default `files`). Both buckets must be **public**.
 
 ## Upload (two-step)
 
