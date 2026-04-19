@@ -58,6 +58,29 @@ function clientIp(req: Request, addr: string): string {
   return (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()) || addr || 'unknown';
 }
 
+async function proxyFromSupabase(
+  req: Request,
+  targetUrl: string,
+  overrideHeaders: Record<string, string>,
+): Promise<Response> {
+  const fwd: Record<string, string> = {};
+  const range = req.headers.get('range');
+  if (range) fwd.range = range;
+
+  const upstream = await fetch(targetUrl, { headers: fwd });
+
+  const out = new Headers();
+  // Preserve these from Supabase response
+  for (const k of ['content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag']) {
+    const v = upstream.headers.get(k);
+    if (v) out.set(k, v);
+  }
+  out.set('cache-control', 'public, max-age=31536000, immutable');
+  for (const [k, v] of Object.entries(overrideHeaders)) out.set(k, v);
+
+  return new Response(upstream.body, { status: upstream.status, headers: out });
+}
+
 function serveFileWithRange(
   req: Request,
   filepath: string,
@@ -283,9 +306,10 @@ function handleMediaEmbed(req: Request, slug: string, extOpt: string | null): Re
     return Response.redirect(`${PUBLIC_BASE}/f/${row.slug}.${row.ext}`, 302);
   }
 
-  // Media: serve inline
+  // Media: serve inline, proxying Supabase through us so the URL stays at dop.sh
   if (row.storage === 'supabase') {
-    return Response.redirect(getPublicUrl(bucketForRow(row), supabasePath(row.slug, row.ext)), 302);
+    const src = getPublicUrl(bucketForRow(row), supabasePath(row.slug, row.ext));
+    return proxyFromSupabase(req, src, { 'content-type': row.mime });
   }
   return serveFileWithRange(req, localPath(row.slug, row.ext), row.size, {
     'content-type': row.mime,
@@ -293,14 +317,18 @@ function handleMediaEmbed(req: Request, slug: string, extOpt: string | null): Re
   });
 }
 
-function handleFileDownload(req: Request, slug: string, extOpt: string): Response {
+function handleFileDownload(req: Request, slug: string, extOpt: string): Response | Promise<Response> {
   if (!SLUG_RE.test(slug)) return text('not found', 404);
   const row = q.getBySlug.get(slug);
   if (!row || row.status !== 'ready') return text('not found', 404);
   if (extOpt !== row.ext) return text('not found', 404);
 
   if (row.storage === 'supabase') {
-    return Response.redirect(supabaseDownloadUrl(row), 302);
+    const src = getPublicUrl(bucketForRow(row), supabasePath(row.slug, row.ext));
+    return proxyFromSupabase(req, src, {
+      'content-type': row.mime,
+      'content-disposition': `attachment; filename="${row.orig_name.replace(/"/g, '')}"`,
+    });
   }
   return serveFileWithRange(req, localPath(row.slug, row.ext), row.size, {
     'content-type': row.mime,
