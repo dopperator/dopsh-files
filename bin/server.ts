@@ -342,6 +342,7 @@ function handleFileDownload(req: Request, slug: string, extOpt: string): Respons
 const server = Bun.serve({
   port: PORT,
   idleTimeout: 255, // seconds; upper bound for long uploads
+  maxRequestBodySize: HARD_MAX, // Bun defaults to 128 MB, which would reject local-tier uploads
   async fetch(req, srv) {
     const url = new URL(req.url);
     const path = url.pathname;
