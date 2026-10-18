@@ -1,0 +1,7 @@
+node_modules/
+
+# Secrets
+.env
+
+# Runtime data: SQLite metadata and locally stored uploads
+data/
